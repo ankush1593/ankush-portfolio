@@ -3,6 +3,7 @@ export default function Home() {
     <main style={styles.container}>
       
       {/* HERO */}
+      
       <section style={styles.hero}>
         <h1 style={styles.title}>Ankush Srivastava</h1>
         <p style={styles.subtitle}>
