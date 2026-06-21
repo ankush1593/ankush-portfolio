@@ -14,6 +14,6 @@ export default function NotFound() {
           ← Go home
         </Link>
       </div>
-    </div>
+    </div> 
   );
 }
