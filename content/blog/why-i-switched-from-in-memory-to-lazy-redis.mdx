@@ -1,0 +1,67 @@
+---
+title: "Why I Switched a Service from Full In-Memory to Lazy Redis Loading"
+excerpt: "A 20-minute cold boot was a symptom, not the problem. Here's the architectural assumption that caused it and exactly how I dismantled it without breaking production."
+date: "2025-06-10"
+tag: "Architecture"
+readTime: "8 min"
+---
+
+## The symptom everyone accepted
+
+When I joined the team, one of the services had a known quirk: it took about 20 minutes to start. Engineers had adapted. Deployments happened during low-traffic windows. Horizontal scaling was effectively impossible in response to live load spikes — you couldn't spin up a new instance fast enough to help.
+
+Nobody called it a problem. It had been this way for a long time.
+
+I called it a problem.
+
+## What was actually happening
+
+The service preloaded its entire working set into memory at startup. Every key-value pair, every configuration record, every pricing structure — loaded eagerly from Kafka topics and held in process memory.
+
+The logic behind this was sound when it was written. In-memory reads are fast. Avoiding Redis round-trips for hot paths makes sense. And when the dataset was small, the startup cost was acceptable.
+
+But the dataset had grown. And the architectural decision had calcified.
+
+By the time I profiled it, startup was spending the majority of its time consuming Kafka topic partitions from offset 0, deserialising records, and building internal data structures. Kafka was being used as a persistent store — which it technically supports, but was never designed for.
+
+## The shift: lazy loading with Redis
+
+The approach was conceptually simple and operationally complex.
+
+Instead of preloading everything, the service would load data on first access and cache it in Redis. Subsequent requests hit the cache. Cache misses go to the source of truth (a proper datastore), populate Redis, and return. Kafka's role is reduced to what it's actually good at: streaming live updates, not storing persistent state.
+
+```go
+func (s *Service) GetMarket(ctx context.Context, id string) (*Market, error) {
+    // Check Redis first
+    cached, err := s.cache.Get(ctx, marketKey(id))
+    if err == nil {
+        return deserialise(cached)
+    }
+
+    // Cache miss — load from source
+    market, err := s.store.FetchMarket(ctx, id)
+    if err != nil {
+        return nil, err
+    }
+
+    // Populate cache async so we don't block the caller
+    go s.cache.Set(ctx, marketKey(id), serialise(market), ttl)
+    return market, nil
+}
+```
+
+The real work was in the migration: making the transition without downtime, handling cache invalidation correctly, and deciding which data was truly "hot" (worth Redis) versus rarely accessed.
+
+## The numbers
+
+- **Cold start time**: 20 minutes → under 60 seconds
+- **Memory footprint**: reduced by 80%+
+- **Horizontal scaling**: now viable — a new instance is useful within a minute
+
+The tradeoff is real: the first request for a cold key is slower than it was before. We accepted this. A 50ms initial latency on a cold key is far better than a 20-minute startup that prevents scaling entirely.
+
+## What I actually learned
+
+The lesson isn't "don't use in-memory caching." It's that architectural decisions have a lifespan. What made sense at one data volume becomes a liability at another. The hard part isn't the refactor — it's noticing that an old decision no longer fits reality.
+
+Build systems that can shed their assumptions.

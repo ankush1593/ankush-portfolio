@@ -1,0 +1,76 @@
+---
+title: "Building a Payment Gateway That Doesn't Lose Money"
+excerpt: "Circuit breakers, HMAC signatures, idempotent retries — the non-negotiable patterns behind a gateway processing 1.5M transactions a day, and why each one exists."
+date: "2025-02-20"
+tag: "Fintech"
+readTime: "9 min"
+---
+
+## The stakes are different
+
+Most backend systems have a reasonable failure mode: a request fails, the user retries, life goes on. Payment systems don't get this grace. A failed transaction might mean a customer's bet wasn't placed. A duplicate transaction means we've charged them twice. Either outcome is bad. Both can happen simultaneously if you're not careful.
+
+When I designed the payment gateway at Techmojo, I started from first principles: what does "correct" actually mean when money is in flight?
+
+## Authentication: JWT + HMAC layered
+
+JWT handles identity — who is making this request, what are they authorised to do. HMAC handles integrity — has this payload been tampered with in transit.
+
+Using only JWT means a stolen token can be replayed with a modified body. Using only HMAC means you're not doing proper identity management. Together, they cover different attack surfaces.
+
+```java
+// HMAC signature over the canonical request body
+String signature = hmacSha256(secretKey, canonicalBody(request));
+// JWT carries claims; HMAC header carries signature
+headers.put("X-Signature", signature);
+headers.put("Authorization", "Bearer " + jwt);
+```
+
+Every inbound request is verified on both dimensions before it touches business logic.
+
+## Rate limiting: per-client, not global
+
+A global rate limit protects the service but penalises well-behaved clients when one client misbehaves. We rate limit per API key with a token bucket per client, backed by Redis.
+
+This means a client hammering the endpoint hits their own ceiling without affecting anyone else's throughput.
+
+## Circuit breaking: isolating downstream failures
+
+Payment providers go down. Banks have maintenance windows. Without a circuit breaker, a slow downstream turns into a queue of threads all waiting for a timeout — and suddenly your gateway is the thing that's slow.
+
+We use a circuit breaker with three states: closed (normal), open (failing fast), and half-open (testing recovery). When error rates cross a threshold, the circuit opens. Requests fail immediately rather than waiting. After a cooldown, the circuit allows a probe request through. If it succeeds, the circuit closes.
+
+```java
+@CircuitBreaker(name = "paymentProvider", fallbackMethod = "handleProviderDown")
+public PaymentResult charge(PaymentRequest request) {
+    return providerClient.charge(request);
+}
+
+public PaymentResult handleProviderDown(PaymentRequest request, Exception ex) {
+    // Queue for async retry, return pending status to caller
+    retryQueue.enqueue(request);
+    return PaymentResult.pending(request.id());
+}
+```
+
+## Idempotent retries: the hardest part
+
+Retrying a payment naively means potentially charging someone twice. The fix is idempotency keys — a client-generated unique ID per transaction that the gateway uses to deduplicate.
+
+```java
+// Check if we've seen this idempotency key before
+Optional<PaymentResult> existing = store.findByIdempotencyKey(request.idempotencyKey());
+if (existing.isPresent()) {
+    return existing.get(); // return the original result, don't charge again
+}
+```
+
+Combined with the retry reconciliation job (which sweeps for transactions in a `PENDING` state older than N minutes and retries them against the provider), this pattern auto-recovered 95% of failed payments without human intervention.
+
+## The number that matters
+
+1.5M transactions per day. 1,000 TPS at peak. 95% auto-recovery rate.
+
+None of these numbers came from clever optimisation. They came from getting the fundamentals right: authentication, isolation, idempotency, and reconciliation. Payment infrastructure isn't glamorous engineering. It's disciplined engineering.
+
+The exciting part is that when it works, nobody notices. That's the point.

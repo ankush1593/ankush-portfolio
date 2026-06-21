@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ankush Srivastava — Personal Website
 
-## Getting Started
+A clean, minimal personal portfolio and blog built with Next.js 14, Tailwind CSS, and MDX.
 
-First, run the development server:
+## Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS
+- **Blog**: MDX via `next-mdx-remote`
+- **Fonts**: Inter + JetBrains Mono (Google Fonts)
+- **Deployment**: Vercel
+
+## Getting started locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/
+  layout.tsx          # Root layout with Navbar + Footer
+  page.tsx            # Home page (all sections)
+  blog/
+    page.tsx          # Blog index
+    [slug]/page.tsx   # Individual post
+  globals.css         # Tailwind base + prose styles
 
-## Learn More
+components/sections/
+  Navbar.tsx
+  Hero.tsx            # Animated hero with SVG avatar
+  About.tsx           # Personal story + values
+  Signature.tsx       # 3 signature problems solved
+  Experience.tsx      # Timeline
+  Skills.tsx          # Skill bars grouped by domain
+  BlogTeaser.tsx      # 3 latest posts preview
+  Contact.tsx         # Form + contact links
+  Footer.tsx
 
-To learn more about Next.js, take a look at the following resources:
+content/blog/         # MDX blog posts (add new ones here)
+lib/posts.ts          # Blog post reading utilities
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Adding a new blog post
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Create a file in `content/blog/your-post-slug.mdx`:
 
-## Deploy on Vercel
+```mdx
+---
+title: "Your Post Title"
+excerpt: "A one-sentence summary shown in previews."
+date: "2025-07-01"
+tag: "Architecture"
+readTime: "6 min"
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Your content here in Markdown...
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+It will automatically appear on `/blog`.
+
+## Customisation checklist
+
+- [ ] Update your LinkedIn URL in `Navbar.tsx` and `Footer.tsx`
+- [ ] Add Formspree / Resend endpoint in `Contact.tsx` (`handleSubmit`)
+- [ ] Replace placeholder LinkedIn href in `Hero.tsx` social links
+- [ ] Update `metadata` in `app/layout.tsx` with your final domain
+- [ ] Add Open Graph image to `public/` and reference in layout metadata
+
+## Deployment
+
+Push to your GitHub repo — Vercel auto-deploys on every push to `main`.

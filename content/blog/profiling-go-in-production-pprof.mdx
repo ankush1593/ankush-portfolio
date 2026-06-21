@@ -1,0 +1,80 @@
+---
+title: "Profiling Go in Production: What pprof Actually Tells You"
+excerpt: "CPU flame graphs, heap profiles, goroutine dumps — three real incidents from our sportsbook platform where profiling data changed how I understood the system entirely."
+date: "2025-04-15"
+tag: "Performance"
+readTime: "11 min"
+---
+
+## Why most engineers don't profile
+
+Profiling has a reputation for being something you do when things are visibly broken. CPU pegged at 100%, OOM kills, timeouts. The fire is already lit.
+
+That's backwards. The most valuable profiling I've done was on systems that appeared healthy — and revealed they were quietly hemorrhaging resources.
+
+This post covers three real incidents on our Go-based sportsbook backend where `pprof` changed my mental model of the system entirely.
+
+## Incident 1: The CPU that wouldn't calm down
+
+At 2,500+ Kafka updates per second, our market pricing service was consuming far more CPU than its workload justified. The service was functional. Latencies were acceptable. But the CPU usage was high enough that we were approaching the threshold where the cluster autoscaler would trigger — meaning real money on infrastructure costs.
+
+I enabled `pprof` over HTTP (never expose this publicly without auth):
+
+```go
+import _ "net/http/pprof"
+
+go func() {
+    log.Println(http.ListenAndServe("localhost:6060", nil))
+}()
+```
+
+Then captured a 30-second CPU profile during peak load:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+```
+
+The flame graph told the story immediately. A significant slice of CPU was being spent in the garbage collector — specifically in `runtime.mallocgc`. We were allocating enormous numbers of small, short-lived objects on every Kafka message.
+
+**The fix**: object pooling with `sync.Pool` for the structs being created per-message, plus a refactor to reuse byte slices rather than allocating new ones in the hot path.
+
+**Result**: peak CPU dropped by more than 50% under the same load. We never hit the autoscaler threshold again.
+
+## Incident 2: The goroutine leak nobody noticed
+
+Heap profiles are obvious when something's wrong — memory climbs, the alert fires. Goroutine leaks are subtler. The process looks fine. Memory is stable. But over 12–24 hours, something is slowly accumulating.
+
+```bash
+curl http://localhost:6060/debug/pprof/goroutine?debug=2 > goroutine.txt
+```
+
+The dump showed thousands of goroutines stuck in the same place: waiting on a channel send that would never be consumed because the downstream consumer had exited on error — but nobody had signalled the producer to stop.
+
+```go
+// The problem: producer goroutine with no exit signal
+go func() {
+    for update := range updates {
+        resultCh <- process(update) // blocks forever if consumer is gone
+    }
+}()
+```
+
+The fix required propagating context cancellation correctly and ensuring every goroutine had an exit condition tied to the request lifecycle. Simple in principle. Easy to miss in a fast-moving codebase.
+
+## Incident 3: The heap that kept growing
+
+A heap profile during a suspected memory leak:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/heap
+```
+
+The allocations pointed to a cache that was growing without bound. We had a local in-process cache with no eviction policy — it accumulated entries indefinitely. At low traffic, this was invisible. At 1M+ events, it became a problem within hours.
+
+Fix: TTL-based eviction + a size cap with LRU semantics.
+
+## The habit I recommend
+
+Don't wait for an incident. Schedule a profiling session on a healthy service once a quarter. The patterns you find — wasteful allocations, blocked goroutines, cache misuse — are almost always fixable before they become incidents.
+
+`pprof` is already in the standard library. The friction is zero. The information is invaluable.
