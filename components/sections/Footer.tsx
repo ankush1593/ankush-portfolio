@@ -18,7 +18,7 @@ export default function Footer() {
           <a href="mailto:ankush1593@gmail.com" className="hover:text-paper transition-colors">
             Email
           </a>
-          <a href="https://www.linkedin.com/in/ankush-srivastava" className="hover:text-paper transition-colors">
+          <a href="https://www.linkedin.com/in/srivastava-ankush/" className="hover:text-paper transition-colors">
             LinkedIn
           </a>
         </div>

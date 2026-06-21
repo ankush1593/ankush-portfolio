@@ -94,7 +94,7 @@ export default function Hero() {
                 GitHub →
               </a>
               <a
-                href="https://www.linkedin.com/in/ankush-srivastava"
+                href="https://www.linkedin.com/in/srivastava-ankush/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate hover:text-ink transition-colors text-sm font-mono"
