@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 const roles = [
-  "Software Architect",
+  "Techincal Lead",
   "Distributed Systems Engineer",
   "Backend Craftsman",
+  "Software Architect",
   "Performance Obsessive",
 ];
 
@@ -59,7 +60,7 @@ export default function Hero() {
 
             {/* Tagline */}
             <p className="text-slate text-lg leading-relaxed mb-10 max-w-md">
-              I architect systems that handle millions of events per second — WebSocket platforms,
+              I build and design systems that handle millions of events per second — WebSocket platforms,
               payment gateways, and real-time data pipelines — and I care deeply about what
               happens under load.
             </p>
